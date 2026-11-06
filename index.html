@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Secret Menu Rush</title>
+<style>
+:root{
+  --bg:#120d24; --panel:#1e1638; --ink:#fff7e8; --muted:#b9acd6; --line:#3a2d63;
+  --accent:#ffcf3f; --on-accent:#1b1230; --hot:#ff5a5f; --good:#4fe39a;
+}
+*,*::before,*::after{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink)}
+body{
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  display:flex;justify-content:center;
+  touch-action:manipulation;overscroll-behavior:none;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;
+}
+button{font:inherit;color:inherit;cursor:pointer}
+#app{
+  position:relative;width:100%;max-width:520px;min-height:100vh;min-height:100dvh;
+  display:flex;flex-direction:column;gap:10px;
+  padding:max(12px,env(safe-area-inset-top)) 16px max(16px,env(safe-area-inset-bottom));
+}
+
+/* HUD */
+.hud{display:grid;gap:8px}
+.clock{position:relative;height:28px;border-radius:999px;background:var(--panel);border:2px solid var(--line);overflow:hidden}
+.clock-fill{position:absolute;inset:0;transform-origin:left center;background:var(--accent);transition:background .2s}
+.clock.urgent .clock-fill{background:var(--hot)}
+.clock-text{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-variant-numeric:tabular-nums;color:var(--on-accent);mix-blend-mode:normal;text-shadow:0 1px 0 rgba(255,255,255,.35)}
+.stats{display:flex;justify-content:space-between;align-items:center;font-weight:700}
+.score{font-size:1.4rem;font-variant-numeric:tabular-nums}
+.streak{color:var(--accent);font-size:.95rem;min-width:4ch}
+.strikes{display:flex;gap:6px;align-items:center;font-size:.8rem;color:var(--muted)}
+.strikes i{width:12px;height:12px;border-radius:50%;background:var(--good);display:inline-block}
+.strikes i.lost{background:var(--hot)}
+
+/* Scene */
+.scene{
+  position:relative;flex:1 1 auto;min-height:210px;max-height:300px;border-radius:16px;overflow:hidden;
+  background:
+    radial-gradient(circle at 85% 18%,rgba(255,240,180,.9) 0 10px,rgba(255,240,180,.15) 11px 26px,transparent 27px),
+    linear-gradient(#1b1446,#2b1d5c 70%);
+  border:2px solid var(--line);
+}
+.scene::after{ /* road */
+  content:"";position:absolute;left:0;right:0;bottom:0;height:34px;
+  background:
+    repeating-linear-gradient(90deg,var(--accent) 0 26px,transparent 26px 52px) center 15px/100% 4px no-repeat,
+    #2a2440;
+}
+.sign{position:absolute;left:10px;top:10px;padding:4px 8px;border-radius:6px;background:var(--panel);border:2px solid var(--accent);color:var(--accent);font:800 .7rem/1 system-ui;letter-spacing:.08em}
+.customer{position:absolute;left:0;right:0;bottom:16px;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:1}
+.bubble{
+  position:relative;max-width:88%;background:#fff;color:#1b1230;border-radius:14px;padding:10px 14px 12px;
+  font-weight:700;font-size:1.02rem;line-height:1.3;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.35);
+}
+.bubble::after{content:"";position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-bottom:0;border-top-color:#fff}
+.bubble.reveal{background:#ffe1e1}
+.bubble.reveal::after{border-top-color:#ffe1e1}
+.clue{margin-top:4px;font-size:.85rem;color:#6b5a96}
+.patience{margin-top:8px;height:6px;border-radius:999px;background:#e9e3f5;overflow:hidden}
+.patience-fill{height:100%;background:var(--good);transform-origin:left center}
+.patience-fill.low{background:var(--hot)}
+.car{font-size:64px;line-height:1;margin-top:6px}
+.customer.arrive{animation:arrive .35s ease-out}
+.customer.leave-ok{animation:leave .45s ease-in forwards}
+.customer.leave-mad{animation:mad .55s ease-in forwards}
+.customer.hidden{visibility:hidden}
+.bubble.shake{animation:shake .3s}
+@keyframes arrive{from{transform:translateX(130%)}to{transform:none}}
+@keyframes leave{to{transform:translateX(-140%)}}
+@keyframes mad{0%,30%{transform:translateX(0) rotate(0)}10%{transform:translateX(-6px) rotate(-3deg)}20%{transform:translateX(6px) rotate(3deg)}100%{transform:translateX(-140%)}}
+@keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+/* 3D mode: WebGL canvas fills the scene; 2D road/car/sign are hidden */
+.scene .gl{position:absolute;inset:0;width:100%;height:100%;display:block}
+.scene.has3d{background:#150f30;min-height:240px;max-height:360px}
+.scene.has3d::after,.scene.has3d .car,.scene.has3d .sign{display:none}
+.scene.has3d .customer{top:10px;bottom:auto}
+.scene.has3d .bubble{font-size:.95rem;padding:8px 12px 10px}
+.flash{position:absolute;inset:0;pointer-events:none;opacity:0;z-index:2}
+.flash.good{animation:flash .45s;background:var(--good)}
+.flash.bad{animation:flash .45s;background:var(--hot)}
+@keyframes flash{from{opacity:.35}to{opacity:0}}
+.pop{position:absolute;left:50%;top:40%;transform:translateX(-50%);font:900 1.6rem system-ui;color:var(--accent);text-shadow:0 2px 0 #000;pointer-events:none;z-index:3;animation:pop .8s ease-out forwards}
+.pop.bad{color:var(--hot)}
+@keyframes pop{to{transform:translate(-50%,-50px);opacity:0}}
+
+/* Order */
+.order{display:grid;gap:6px}
+.order-label{font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.plate{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.slot{height:48px;border-radius:12px;border:2px dashed var(--line);display:grid;place-items:center;font-size:28px}
+.slot.full{border-style:solid;border-color:var(--accent);background:var(--panel)}
+
+.tray{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.ing{
+  position:relative;display:grid;justify-items:center;gap:2px;padding:8px 2px 6px;min-height:70px;
+  border-radius:12px;border:2px solid var(--line);background:var(--panel);transition:transform .08s,box-shadow .08s,background .1s;
+  box-shadow:0 5px 0 #0b0717;
+}
+.ing:active,.ing.on{transform:translateY(4px);box-shadow:0 1px 0 #0b0717}
+.ing .e{font-size:28px;line-height:1.1}
+.ing .n{font-size:.68rem;line-height:1.1;color:var(--muted);text-align:center}
+.ing .k{position:absolute;top:3px;left:6px;font-size:.65rem;color:var(--muted)}
+.ing.on{background:var(--accent);border-color:var(--accent)}
+.ing.on .n,.ing.on .k{color:var(--on-accent)}
+@media (hover:none){.ing .k{display:none}}
+
+.actions{display:grid;grid-template-columns:1fr 2fr;gap:10px}
+.btn{min-height:54px;border-radius:14px;border:2px solid var(--line);background:var(--panel);font-weight:800;font-size:1.05rem}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--on-accent);font-size:1.2rem}
+.btn:active{transform:scale(.97)}
+
+/* Overlays */
+.overlay{
+  position:fixed;inset:0;z-index:10;display:flex;flex-direction:column;align-items:center;justify-content:safe center;gap:14px;
+  padding:24px;text-align:center;background:rgba(18,13,36,.96);overflow:auto;
+}
+.overlay[hidden]{display:none}
+.title{margin:0;font-size:clamp(2.2rem,11vw,3.4rem);line-height:.95;font-weight:900;letter-spacing:-.02em;color:var(--accent);transform:rotate(-3deg)}
+.title span{display:block;color:var(--ink)}
+.tag{margin:0;font-size:1.05rem;color:var(--muted);max-width:30ch}
+.how{margin:0;padding:0;list-style:none;display:grid;gap:6px;font-size:.95rem;max-width:34ch}
+.overlay .btn.primary{padding:0 32px;font-size:1.3rem}
+.disclaimer{margin:0;font-size:.8rem;color:var(--muted);max-width:32ch}
+.big{font-size:3.4rem;font-weight:900;font-variant-numeric:tabular-nums;color:var(--accent);line-height:1}
+.sub{margin:0;color:var(--muted)}
+.newbest{color:var(--good);font-weight:800}
+.name-field{display:grid;gap:6px;width:100%;max-width:280px;text-align:left}
+.name-field label{font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.name-field input{
+  font:700 1.1rem system-ui;color:var(--ink);background:var(--panel);border:2px solid var(--line);border-radius:12px;
+  padding:12px 14px;width:100%;-webkit-user-select:text;user-select:text;
+}
+.name-field input:focus{outline:none;border-color:var(--accent)}
+.name-field .err{font-size:.8rem;color:var(--hot);min-height:1em}
+.player{font-size:.85rem;color:var(--muted);font-weight:600;margin-left:8px}
+.board{width:100%;max-width:300px;display:grid;gap:4px}
+.board h3{margin:0 0 4px;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600}
+.board ol{margin:0;padding:0;list-style:none;display:grid;gap:4px}
+.board li{display:grid;grid-template-columns:2ch 1fr auto;gap:10px;padding:6px 10px;border-radius:8px;background:var(--panel);font-variant-numeric:tabular-nums;text-align:left}
+.board li .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.board li.me{background:var(--accent);color:var(--on-accent);font-weight:800}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn.ghost{padding:0 18px;font-size:1rem}
+</style>
+</head>
+<body>
+<div id="app">
+  <header class="hud">
+    <div class="clock" id="clock"><div class="clock-fill" id="clockFill"></div><div class="clock-text" id="clockText">60</div></div>
+    <div class="stats">
+      <span><span class="score" id="score">0</span><span class="player" id="playerTag"></span></span>
+      <span class="streak" id="streak"></span>
+      <span class="strikes" aria-label="Drive-offs left">drive-offs <i id="s0"></i><i id="s1"></i><i id="s2"></i></span>
+    </div>
+  </header>
+
+  <section class="scene" id="scene">
+    <div class="sign">DRIVE-THRU ▸ OPEN LATE</div>
+    <div class="customer hidden" id="customer">
+      <div class="bubble" id="bubble">
+        <div id="hint"></div>
+        <div class="clue" id="clue"></div>
+        <div class="patience"><div class="patience-fill" id="patienceFill"></div></div>
+      </div>
+      <div class="car" id="car">🚗</div>
+    </div>
+    <div class="flash" id="flash"></div>
+  </section>
+
+  <section class="order">
+    <div class="order-label">Your order</div>
+    <div class="plate" id="plate"></div>
+  </section>
+
+  <section class="tray" id="tray"></section>
+
+  <div class="actions">
+    <button class="btn" id="trash">🗑 Trash</button>
+    <button class="btn primary" id="serve">Serve ▸</button>
+  </div>
+
+  <div class="overlay" id="titleScreen">
+    <h1 class="title">Secret Menu <span>Rush</span></h1>
+    <p class="tag">A Taco Bell drive-thru, after midnight. Nobody orders off the board.</p>
+    <ul class="how">
+      <li>🚗 Customers describe their secret order.</li>
+      <li>🌮 Tap the ingredients, then hit <b>Serve</b>.</li>
+      <li>⏱ You get <b>60 seconds</b>. Three drive-offs and you're done.</li>
+    </ul>
+    <div class="name-field">
+      <label for="nameInput">Your name</label>
+      <input id="nameInput" maxlength="16" autocomplete="nickname" enterkeyhint="go" placeholder="Type your name">
+      <div class="err" id="nameErr"></div>
+    </div>
+    <button class="btn primary" id="startBtn">Click to start</button>
+    <p class="disclaimer">Fan-made for an internal game jam. Not an official game.</p>
+  </div>
+
+  <div class="overlay" id="endScreen" hidden>
+    <h2 class="title" id="endTitle" style="font-size:2.2rem">Time's up!</h2>
+    <div class="big" id="endScore">0</div>
+    <p class="sub" id="endStats"></p>
+    <p class="newbest" id="newBest" hidden>New best!</p>
+    <div class="board">
+      <h3>Top scores on this device</h3>
+      <ol id="board"></ol>
+    </div>
+    <div class="row">
+      <button class="btn primary" id="againBtn">Play again</button>
+      <button class="btn ghost" id="switchBtn">Change player</button>
+    </div>
+    <p class="disclaimer">Fan-made for an internal game jam. Not an official game.</p>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+// ---------- 3D drive-thru scene (Three.js). Returns null if WebGL/Three is unavailable. ----------
+window.makeScene3D = function(host){
+  if(!window.THREE) return null;
+  const T = THREE;
+  let renderer;
+  try{ renderer = new T.WebGLRenderer({ antialias:true }); }catch(e){ return null; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const canvas = renderer.domElement;
+  canvas.className = 'gl';
+  host.prepend(canvas);
+  host.classList.add('has3d');
+
+  const scene = new T.Scene();
+  const SKY = 0x150f30;
+  scene.background = new T.Color(SKY);
+  scene.fog = new T.Fog(SKY, 9, 24);
+  const cam = new T.PerspectiveCamera(50, 1, .1, 80);
+  const LOOK = new T.Vector3(0, 1.05, -1.6);
+
+  const lam = (color, extra) => new T.MeshLambertMaterial(Object.assign({ color }, extra || {}));
+  const basic = (color, extra) => new T.MeshBasicMaterial(Object.assign({ color }, extra || {}));
+  const box = (w, h, d, mat, x, y, z, parent) => {
+    const m = new T.Mesh(new T.BoxGeometry(w, h, d), mat);
+    m.position.set(x, y, z); (parent || scene).add(m); return m;
+  };
+  let seed = 1;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+
+  // Lights
+  scene.add(new T.AmbientLight(0x4a3a70, .7));
+  scene.add(new T.HemisphereLight(0x9a8cff, 0x2a1f3d, .55));
+  const moonLight = new T.DirectionalLight(0xb8c4ff, .55); moonLight.position.set(-4, 7, 5); scene.add(moonLight);
+  const kitchen = new T.PointLight(0xffd59a, 1.3, 6, 1); kitchen.position.set(0, 2.5, 2.4); scene.add(kitchen);
+  const windowGlow = new T.PointLight(0xffc77a, 1.1, 6, 1); windowGlow.position.set(0, 2.2, .3); scene.add(windowGlow);
+
+  // Kitchen side: wall with the service window, counter and tray
+  const wallM = lam(0x3a2a55);
+  box(6, .95, .12, wallM, 0, .475, 1);
+  box(6, 2, .12, wallM, 0, 3.35, 1);
+  box(2, 1.4, .12, wallM, -2.15, 1.65, 1);
+  box(2, 1.4, .12, wallM, 2.15, 1.65, 1);
+  const trimM = lam(0xffcf3f, { emissive: 0x4a3600 });
+  box(2.4, .08, .16, trimM, 0, 2.37, 1);
+  box(2.4, .08, .16, trimM, 0, .95, 1);
+  box(.08, 1.5, .16, trimM, -1.17, 1.65, 1);
+  box(.08, 1.5, .16, trimM, 1.17, 1.65, 1);
+  box(4, .08, 1.2, lam(0xb8a07a), 0, .93, 1.6);
+  box(4, .9, .06, lam(0x6b2a3a), 0, .45, 2.2);
+  box(.95, .04, .62, lam(0xd23b3b), .72, .99, 1.75);
+  box(.85, .01, .52, lam(0xf3e6c8), .72, 1.015, 1.75);
+
+  // Outside: ground, curb, road, lane marks
+  const ground = new T.Mesh(new T.PlaneGeometry(60, 40), lam(0x1d1832));
+  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const road = new T.Mesh(new T.PlaneGeometry(60, 2.8), lam(0x2a2540));
+  road.rotation.x = -Math.PI / 2; road.position.set(0, .005, -1.6); scene.add(road);
+  box(60, .12, .2, lam(0x8d86a6), 0, .06, -.15);
+  const dashM = basic(0xffcf3f);
+  for(let x = -24; x <= 24; x += 1.6) box(.8, .01, .08, dashM, x, .012, -3.05);
+
+  // Skyline with lit windows
+  seed = 7;
+  const bldM = lam(0x1a1438);
+  const winOn = basic(0xffd27a), winOff = basic(0x2c2450);
+  for(let i = -7; i <= 7; i++){
+    const w = 1.4 + rnd() * 1.6, h = 2 + rnd() * 4.5, z = -10 - rnd() * 4, x = i * 2.3 + rnd();
+    box(w, h, 2, bldM, x, h / 2, z);
+    for(let wy = .8; wy < h - .4; wy += .7)
+      for(let wx = -w / 2 + .35; wx < w / 2 - .2; wx += .45)
+        box(.2, .3, .02, rnd() < .35 ? winOn : winOff, x + wx, wy, z + 1.01);
+  }
+
+  // Street lamp + drive-thru sign
+  const poleM = lam(0x4b4466);
+  box(.12, 3.4, .12, poleM, -3.3, 1.7, -3.6);
+  box(.7, .1, .25, poleM, -3, 3.4, -3.6);
+  box(.4, .06, .2, basic(0xffe2a8), -2.85, 3.33, -3.6);
+  const lamp = new T.PointLight(0xffb070, 1.3, 9, 1); lamp.position.set(-2.85, 3.1, -3.4); scene.add(lamp);
+
+  const signCanvas = document.createElement('canvas'); signCanvas.width = 256; signCanvas.height = 128;
+  const sg = signCanvas.getContext('2d');
+  sg.fillStyle = '#1e1638'; sg.fillRect(0, 0, 256, 128);
+  sg.strokeStyle = '#ffcf3f'; sg.lineWidth = 8; sg.strokeRect(6, 6, 244, 116);
+  sg.fillStyle = '#ffcf3f'; sg.font = '900 44px system-ui, sans-serif'; sg.textAlign = 'center';
+  sg.fillText('DRIVE-THRU', 128, 62);
+  sg.fillStyle = '#ff5a5f'; sg.font = '800 26px system-ui, sans-serif';
+  sg.fillText('OPEN LATE ▸', 128, 100);
+  box(.12, 2.6, .12, poleM, 3.6, 1.3, -3.8);
+  const sign = new T.Mesh(new T.PlaneGeometry(1.8, .9), new T.MeshBasicMaterial({ map: new T.CanvasTexture(signCanvas) }));
+  sign.position.set(3.6, 2.9, -3.75); scene.add(sign);
+
+  // Moon + stars
+  const moon = new T.Mesh(new T.SphereGeometry(.6, 20, 14), basic(0xfff1c2, { fog: false }));
+  moon.position.set(5, 7, -18); scene.add(moon);
+  const starPos = [];
+  seed = 3;
+  for(let i = 0; i < 260; i++) starPos.push((rnd() - .5) * 70, 4 + rnd() * 18, -20 - rnd() * 6);
+  const starGeo = new T.BufferGeometry(); starGeo.setAttribute('position', new T.Float32BufferAttribute(starPos, 3));
+  scene.add(new T.Points(starGeo, new T.PointsMaterial({ color: 0xffffff, size: .08, fog: false })));
+
+  // ---------- Cars ----------
+  const cars = [];
+  const wheelGeo = new T.CylinderGeometry(.36, .36, .28, 18); wheelGeo.rotateX(Math.PI / 2);
+  const tireM = lam(0x15121c), hubM = lam(0xc9c4dc), bumperM = lam(0x2e2a3d);
+  const headM = basic(0xfff6c8), tailM = basic(0xff3344), skinM = lam(0xe0a77a);
+  const glassM = new T.MeshLambertMaterial({ color: 0x1a2340, emissive: 0x0a1030, transparent: true, opacity: .6 });
+  const beamM = new T.MeshBasicMaterial({ color: 0xfff1b0, transparent: true, opacity: .1, depthWrite: false, blending: T.AdditiveBlending });
+  const beamGeo = new T.ConeGeometry(.75, 3.4, 16, 1, true);
+
+  function makeCar(hue){
+    const g = new T.Group();
+    const col = new T.Color().setHSL(hue, .55, .5);
+    const bodyM = lam(col);
+    box(3.6, .7, 1.6, bodyM, 0, .62, 0, g);
+    box(2, .62, 1.42, bodyM, .25, 1.27, 0, g);
+    box(.85, .42, .02, glassM, -.25, 1.29, .72, g);
+    box(.85, .42, .02, glassM, .75, 1.29, .72, g);
+    box(.04, .45, 1.3, glassM, -.76, 1.29, 0, g);
+    const head = new T.Mesh(new T.SphereGeometry(.17, 14, 10), skinM); head.position.set(-.25, 1.33, .3); g.add(head);
+    box(.1, .26, 1.5, bumperM, -1.82, .45, 0, g);
+    box(.1, .26, 1.5, bumperM, 1.82, .45, 0, g);
+    for(const z of [.55, -.55]){
+      box(.06, .16, .3, headM, -1.81, .74, z, g);
+      box(.06, .14, .3, tailM, 1.81, .74, z, g);
+      const beam = new T.Mesh(beamGeo, beamM);
+      beam.rotation.z = -Math.PI / 2; beam.position.set(-3.5, .74, z); g.add(beam);
+    }
+    const wheels = [];
+    for(const x of [-1.15, 1.15]) for(const z of [.72, -.72]){
+      const w = new T.Mesh(wheelGeo, tireM); w.position.set(x, .36, z);
+      const hub = new T.Mesh(new T.BoxGeometry(.3, .08, .02), hubM); hub.position.z = z > 0 ? .15 : -.15; w.add(hub);
+      g.add(w); wheels.push(w);
+    }
+    g.position.set(10, 0, -1.6);
+    g.userData = { bodyM, wheels, state: 'arrive', t: 0, v: 0, anger: 0, bump: 0, puff: 0 };
+    scene.add(g);
+    return g;
+  }
+
+  // Exhaust / anger puffs
+  const puffs = [];
+  const puffGeo = new T.SphereGeometry(.16, 10, 8);
+  const SHARED = new Set([wheelGeo, beamGeo, puffGeo]);
+  function puff(x, y, z){
+    const m = new T.Mesh(puffGeo, new T.MeshBasicMaterial({ color: 0xb7b0c9, transparent: true, opacity: .55, depthWrite: false }));
+    m.position.set(x, y, z); m.userData = { life: 0 }; scene.add(m); puffs.push(m);
+  }
+
+  // ---------- Ingredients on the tray ----------
+  const ingM = {
+    shell: lam(0xe8b54a, { side: T.DoubleSide }), wrap: lam(0xf1ddb0), beef: lam(0x7a3b22), beans: lam(0x5e2a20),
+    cheese: lam(0xffc53a), lettuce: lam(0x58c24a), hot: lam(0xe0261f, { emissive: 0x300000 }), rice: lam(0xfaf6ec),
+  };
+  const shellGeo = new T.CylinderGeometry(.3, .3, .55, 22, 1, true, -Math.PI / 2, Math.PI); shellGeo.rotateX(Math.PI / 2); SHARED.add(shellGeo);
+  const KEY_SEED = { shell: 11, wrap: 12, beef: 13, beans: 14, cheese: 15, lettuce: 16, hot: 17, rice: 18 };
+
+  function bits(parent, n, geo, mat, spread, sy, setup){
+    for(let i = 0; i < n; i++){
+      const m = new T.Mesh(geo, mat);
+      m.position.set((rnd() - .5) * spread, rnd() * .04, (rnd() - .5) * spread * .8);
+      m.rotation.set(rnd() * 3, rnd() * 3, rnd() * 3);
+      m.scale.y = sy;
+      if(setup) setup(m);
+      parent.add(m);
+    }
+  }
+  function makeIng(k){
+    seed = KEY_SEED[k];
+    const g = new T.Group();
+    let h = .07;
+    switch(k){
+      case 'shell': { const m = new T.Mesh(shellGeo, ingM.shell); m.position.y = .3; g.add(m); h = .1; break; }
+      case 'wrap': { const m = new T.Mesh(new T.CylinderGeometry(.36, .36, .035, 26), ingM.wrap); m.position.y = .02; g.add(m); h = .04; break; }
+      case 'beef': bits(g, 9, new T.DodecahedronGeometry(.07), ingM.beef, .32, 1); h = .1; break;
+      case 'beans': bits(g, 12, new T.SphereGeometry(.045, 8, 6), ingM.beans, .32, .7); h = .08; break;
+      case 'cheese': bits(g, 16, new T.BoxGeometry(.13, .018, .018), ingM.cheese, .34, 1, m => { m.rotation.x = 0; m.rotation.z = 0; }); h = .05; break;
+      case 'lettuce': bits(g, 9, new T.IcosahedronGeometry(.08, 0), ingM.lettuce, .34, .35); h = .06; break;
+      case 'hot': {
+        for(const [r, y] of [[.15, .01], [.08, .025]]){
+          const t = new T.Mesh(new T.TorusGeometry(r, .016, 6, 24), ingM.hot);
+          t.rotation.x = Math.PI / 2; t.position.y = y; g.add(t);
+        }
+        h = .035; break;
+      }
+      case 'rice': bits(g, 18, new T.SphereGeometry(.032, 6, 5), ingM.rice, .32, .8); h = .06; break;
+    }
+    g.userData.h = h;
+    return g;
+  }
+
+  const stack = new T.Group(); stack.position.set(.72, 1.02, 1.75); scene.add(stack);
+  const flying = [];
+  // free GPU memory for removed objects (shared geometries stay)
+  function drop(obj){
+    scene.remove(obj);
+    obj.traverse(m => { if(m.geometry && !SHARED.has(m.geometry)) m.geometry.dispose(); });
+    if(obj.userData && obj.userData.bodyM) obj.userData.bodyM.dispose();
+  }
+  let shown = [];
+  function setSelection(keys){
+    const ordered = [...keys].sort((a, b) => (/^(shell|wrap)$/.test(b) ? 1 : 0) - (/^(shell|wrap)$/.test(a) ? 1 : 0));
+    [...stack.children].forEach(c => { stack.remove(c); c.traverse(m => { if(m.geometry && !SHARED.has(m.geometry)) m.geometry.dispose(); }); });
+    let y = 0;
+    for(const k of ordered){
+      const m = makeIng(k);
+      m.position.y = (k === 'shell') ? 0 : y + (ordered[0] === 'shell' ? .06 : 0);
+      if(k !== 'shell') y += m.userData.h; else y += .02;
+      if(!shown.includes(k)){ m.scale.setScalar(.01); m.userData.pop = 0; }
+      stack.add(m);
+    }
+    shown = [...keys];
+  }
+  function detach(kind){
+    if(!stack.children.length) return;
+    const g = new T.Group();
+    g.position.copy(stack.position); g.rotation.copy(stack.rotation);
+    [...stack.children].forEach(c => { c.scale.setScalar(1); g.add(c); });
+    g.userData = { kind, t: 0, from: stack.position.clone() };
+    scene.add(g); flying.push(g);
+    shown = [];
+  }
+
+  // ---------- API ----------
+  let current = null, clock = 0;
+  const api = {
+    spawn(hue){ current = makeCar(hue); },
+    leave(happy){
+      if(!current) return;
+      current.userData.state = happy ? 'leaveOk' : 'leaveMad';
+      current.userData.t = 0; current.userData.v = happy ? 2 : 0;
+      current = null;
+    },
+    wrong(){ if(current) current.userData.bump = 1; },
+    setAnger(a){ if(current) current.userData.anger = a; },
+    setSelection,
+    serveFly(){ detach('serve'); },
+    trashDrop(){ detach('trash'); },
+    clear(){
+      cars.length = 0;
+      scene.children.filter(o => o.userData && o.userData.wheels).forEach(drop);
+      flying.splice(0).forEach(drop);
+      current = null; setSelection([]);
+    },
+    update(dt){
+      clock += dt;
+      // gentle camera drift for parallax
+      cam.position.set(Math.sin(clock * .3) * .12, 1.95 + Math.sin(clock * .5) * .03, 3.7);
+      cam.lookAt(LOOK);
+      stack.rotation.y = Math.sin(clock * .7) * .45;
+      stack.children.forEach(c => {
+        if(c.userData.pop !== undefined){
+          c.userData.pop = Math.min(1, c.userData.pop + dt * 6);
+          const p = c.userData.pop, s = 1 + Math.sin(p * Math.PI) * .25;
+          c.scale.setScalar(Math.max(.01, p * s));
+          if(p >= 1) delete c.userData.pop;
+        }
+      });
+
+      scene.children.filter(o => o.userData && o.userData.wheels).forEach(car => {
+        const u = car.userData; u.t += dt;
+        const x0 = car.position.x;
+        let shake = 0;
+        if(u.state === 'arrive'){
+          const p = Math.min(1, u.t / .6), e = 1 - Math.pow(1 - p, 3);
+          car.position.x = 10 * (1 - e);
+          if(p >= 1) u.state = 'wait';
+        } else if(u.state === 'wait'){
+          car.position.x = 0;
+          if(u.anger > .65) shake = Math.sin(clock * 55) * .025 * u.anger;
+          u.puff -= dt;
+          if(u.anger > .65 && u.puff <= 0){ puff(1.95, .45, -1.1); u.puff = .25; }
+        } else if(u.state === 'leaveOk'){
+          u.v += 16 * dt; car.position.x -= u.v * dt;
+        } else if(u.state === 'leaveMad'){
+          if(u.t < .3){ shake = Math.sin(clock * 70) * .06; }
+          else {
+            u.v += 34 * dt; car.position.x -= u.v * dt;
+            u.puff -= dt; if(u.puff <= 0){ puff(car.position.x + 1.95, .4, -1.2); u.puff = .05; }
+          }
+        }
+        const dx = car.position.x - x0;
+        u.wheels.forEach(w => { w.rotation.z -= dx / .36; });
+        u.bump = Math.max(0, u.bump - dt * 3);
+        car.position.y = Math.abs(Math.sin(u.bump * Math.PI * 2)) * .18 * u.bump + Math.sin(clock * 9) * .006;
+        car.rotation.z = shake;
+        if(car.position.x < -16) drop(car);
+      });
+
+      for(let i = puffs.length - 1; i >= 0; i--){
+        const m = puffs[i], u = m.userData; u.life += dt;
+        m.position.y += dt * .6; m.position.x += dt * .5;
+        m.scale.setScalar(1 + u.life * 2.5);
+        m.material.opacity = Math.max(0, .55 - u.life * .9);
+        if(u.life > .6){ scene.remove(m); m.material.dispose(); puffs.splice(i, 1); }
+      }
+
+      for(let i = flying.length - 1; i >= 0; i--){
+        const g = flying[i], u = g.userData; u.t += dt;
+        if(u.kind === 'serve'){
+          const p = Math.min(1, u.t / .4);
+          g.position.set(u.from.x * (1 - p), u.from.y + Math.sin(p * Math.PI) * .7 + (1.25 - u.from.y) * p, u.from.z + (-1.3 - u.from.z) * p);
+          g.scale.setScalar(1 - p * .6);
+          if(p >= 1){ drop(g); flying.splice(i, 1); }
+        } else {
+          const p = Math.min(1, u.t / .35);
+          g.position.y = u.from.y - p * p * .8;
+          g.rotation.z = p * 1.2;
+          g.scale.setScalar(Math.max(.01, 1 - p));
+          if(p >= 1){ drop(g); flying.splice(i, 1); }
+        }
+      }
+      renderer.render(scene, cam);
+    },
+  };
+
+  function resize(){
+    const w = host.clientWidth, h = host.clientHeight;
+    if(!w || !h) return;
+    renderer.setSize(w, h, false);
+    cam.aspect = w / h;
+    cam.fov = w / h < 1.2 ? 58 : 50;
+    cam.updateProjectionMatrix();
+  }
+  resize();
+  if(window.ResizeObserver) new ResizeObserver(resize).observe(host);
+  else addEventListener('resize', resize);
+  return api;
+};
+</script>
+<script>
+(() => {
+  const RUN = 60;
+  const ING = [
+    {k:'shell',   e:'🌮', n:'Crunchy shell'},
+    {k:'wrap',    e:'🫓', n:'Soft tortilla'},
+    {k:'beef',    e:'🥩', n:'Beef'},
+    {k:'beans',   e:'🫘', n:'Beans'},
+    {k:'cheese',  e:'🧀', n:'Cheese'},
+    {k:'lettuce', e:'🥬', n:'Lettuce'},
+    {k:'hot',     e:'🌶️', n:'Hot sauce'},
+    {k:'rice',    e:'🍚', n:'Rice'},
+  ];
+  const BY = Object.fromEntries(ING.map(i => [i.k, i]));
+  const RECIPES = [
+    {items:['shell','beef','lettuce'],  hints:['Crunchy, but folded. Beefy, with something green.','Something that snaps. Meat inside, leafy on top.']},
+    {items:['wrap','cheese','beans'],   hints:['Soft and rolled. Melty. And beans, lots of beans.','Wrap it soft, make it gooey, add the little brown guys.']},
+    {items:['shell','beef','hot'],      hints:['Crunchy and meaty, and I want it to hurt.','Snap shell, beef, bring the fire.']},
+    {items:['wrap','lettuce','rice'],   hints:['Something soft, fresh and green, with fluffy grains.','A wrap. Leafy. Rice. No meat tonight.']},
+    {items:['shell','beans','cheese'],  hints:['Crispy shell, beans, extra melty.','Crunch, earthy beans, gooey on top.']},
+    {items:['wrap','beef','hot'],       hints:['Soft wrap, beef, and make it spicy.','Floppy outside, meaty inside, hot hot hot.']},
+    {items:['wrap','beef','rice','cheese'],    hints:['Soft wrap, beef, rice, and melty. I worked late.','Big and soft: meat, grains, gooey.']},
+    {items:['shell','beef','cheese','hot'],    hints:['Crunchy, beefy, cheesy, and fire.','Snap shell, meat, melty, spicy. All of it.']},
+    {items:['shell','beans','lettuce','rice'], hints:['Crunchy and fresh: beans, greens, grains.','Snap shell, earthy, leafy, fluffy. No meat.']},
+    {items:['wrap','beans','hot','cheese'],    hints:['Soft wrap: beans, cheese, a spicy kick.','Rolled, earthy, gooey, hot.']},
+    {items:['wrap','beef','lettuce','hot'],    hints:['Soft wrap, beef, greens, and fire.','Floppy, meaty, leafy, spicy.']},
+  ];
+  const CARS = ['🚗','🚙','🚕','🛻','🚐'];
+
+  const $ = id => document.getElementById(id);
+  const el = {
+    clock:$('clock'), clockFill:$('clockFill'), clockText:$('clockText'),
+    score:$('score'), streak:$('streak'), strikes:[$('s0'),$('s1'),$('s2')],
+    scene:$('scene'), customer:$('customer'), bubble:$('bubble'), hint:$('hint'), clue:$('clue'),
+    patienceFill:$('patienceFill'), car:$('car'), flash:$('flash'),
+    plate:$('plate'), tray:$('tray'), trash:$('trash'), serve:$('serve'),
+    titleScreen:$('titleScreen'), endScreen:$('endScreen'), endTitle:$('endTitle'),
+    endScore:$('endScore'), endStats:$('endStats'), newBest:$('newBest'),
+    startBtn:$('startBtn'), againBtn:$('againBtn'), switchBtn:$('switchBtn'),
+    nameInput:$('nameInput'), nameErr:$('nameErr'), playerTag:$('playerTag'), board:$('board'),
+  };
+
+  // 3D scene if Three.js + WebGL are available; otherwise the 2D emoji scene stays.
+  let s3 = null;
+  try{ s3 = window.makeScene3D ? window.makeScene3D(el.scene) : null; }catch(e){ s3 = null; }
+
+  // ---------- Audio (Web Audio only, started after the first click) ----------
+  let ac = null;
+  function tone(freq, dur, type='square', vol=.07, delay=0, slideTo=null){
+    if(!ac) return;
+    try{
+      const t0 = ac.currentTime + delay;
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = type; o.frequency.setValueAtTime(freq, t0);
+      if(slideTo) o.frequency.exponentialRampToValueAtTime(slideTo, t0 + dur);
+      g.gain.setValueAtTime(vol, t0);
+      g.gain.exponentialRampToValueAtTime(.0001, t0 + dur);
+      o.connect(g).connect(ac.destination);
+      o.start(t0); o.stop(t0 + dur + .02);
+    }catch(e){}
+  }
+  const sfx = {
+    pick:   () => tone(660,.06),
+    unpick: () => tone(440,.06),
+    trash:  () => tone(300,.12,'triangle',.08,0,150),
+    good:   () => { tone(880,.08,'square',.07); tone(1320,.16,'square',.07,.08); },
+    bad:    () => tone(160,.28,'sawtooth',.08),
+    leave:  () => tone(320,.5,'sawtooth',.07,0,90),
+    tick:   () => tone(1200,.04,'square',.05),
+    start:  () => [523,659,784,1047].forEach((f,i) => tone(f,.1,'square',.06,i*.08)),
+    end:    () => [784,659,523,392].forEach((f,i) => tone(f,.14,'triangle',.08,i*.12)),
+  };
+
+  // ---------- Player name + scores (saved on this device) ----------
+  const BOARD_SIZE = 5;
+  let player = '';
+  let memScores = [];   // fallback when localStorage is unavailable
+  function loadScores(){
+    try{
+      const v = JSON.parse(localStorage.getItem('smr-scores') || '[]');
+      return Array.isArray(v) ? v : [];
+    }catch(e){ return memScores; }
+  }
+  function saveScores(list){
+    memScores = list;
+    try{ localStorage.setItem('smr-scores', JSON.stringify(list)); }catch(e){}
+  }
+  function loadName(){ try{ return localStorage.getItem('smr-name') || ''; }catch(e){ return ''; } }
+  function saveName(n){ try{ localStorage.setItem('smr-name', n); }catch(e){} }
+  function cleanName(s){ return s.replace(/\s+/g, ' ').trim().slice(0, 16); }
+
+  function renderBoard(list, mine){
+    el.board.replaceChildren(...list.slice(0, BOARD_SIZE).map((s, i) => {
+      const li = document.createElement('li');
+      if(s === mine) li.className = 'me';
+      const rank = document.createElement('span'); rank.textContent = i + 1;
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name;
+      const sc = document.createElement('span'); sc.textContent = s.score;
+      li.append(rank, nm, sc);
+      return li;
+    }));
+  }
+
+  // ---------- Build UI ----------
+  const slots = [];
+  for(let i=0;i<4;i++){ const s=document.createElement('div'); s.className='slot'; el.plate.appendChild(s); slots.push(s); }
+  const ingBtns = ING.map((ing, i) => {
+    const b = document.createElement('button');
+    b.className = 'ing';
+    b.innerHTML = `<span class="k">${i+1}</span><span class="e">${ing.e}</span><span class="n">${ing.n}</span>`;
+    b.addEventListener('click', e => { e.currentTarget.blur(); toggle(ing.k); });
+    el.tray.appendChild(b);
+    return b;
+  });
+
+  // ---------- State ----------
+  let mode = 'title';           // title | play | end
+  let timeLeft, score, served, strikes, streak, sel, cust, nextSpawnAt, clock, lastSec, lastRecipe;
+
+  function reset(){
+    timeLeft = RUN; score = 0; served = 0; strikes = 0; streak = 0;
+    sel = []; cust = null; nextSpawnAt = .3; clock = 0; lastSec = RUN; lastRecipe = -1;
+    el.customer.className = 'customer hidden';
+    if(s3) s3.clear();
+    renderSel(); renderHud();
+  }
+
+  function start(){
+    if(!el.titleScreen.hidden){
+      const n = cleanName(el.nameInput.value);
+      if(!n){
+        el.nameErr.textContent = 'Type your name first.';
+        el.nameInput.focus();
+        return;
+      }
+      player = n; saveName(n);
+      el.nameErr.textContent = '';
+      el.nameInput.blur();
+    }
+    el.playerTag.textContent = player;
+    try{ ac = ac || new (window.AudioContext || window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume(); }catch(e){}
+    reset();
+    mode = 'play';
+    el.titleScreen.hidden = true; el.endScreen.hidden = true;
+    sfx.start();
+  }
+
+  function finish(reason){
+    if(mode !== 'play') return;
+    mode = 'end';
+    cust = null;
+    const list = loadScores();
+    const myPrevBest = list.filter(s => s.name === player).reduce((m, s) => Math.max(m, s.score), 0);
+    const entry = { name: player, score, served, at: Date.now() };
+    list.push(entry);
+    list.sort((a, b) => b.score - a.score || a.at - b.at);
+    const kept = list.slice(0, 50);
+    saveScores(kept);
+    el.endTitle.textContent = reason === 'strikes' ? 'Three cars drove off!' : "Time's up!";
+    el.endScore.textContent = score;
+    el.endStats.textContent = `${player} · ${served} orders served · your best: ${Math.max(myPrevBest, score)}`;
+    el.newBest.hidden = !(score > myPrevBest && score > 0);
+    renderBoard(kept, entry);
+    el.endScreen.hidden = false;
+    sfx.end();
+  }
+
+  // ---------- Customers ----------
+  function pickRecipe(){
+    const elapsed = RUN - timeLeft;
+    const pool = RECIPES.map((r,i)=>i).filter(i => {
+      const n = RECIPES[i].items.length;
+      if(elapsed < 18) return n === 3;
+      if(elapsed < 38) return true;
+      return n === 4 || Math.random() < .25;
+    }).filter(i => i !== lastRecipe);
+    const i = pool[Math.floor(Math.random()*pool.length)];
+    lastRecipe = i;
+    return RECIPES[i];
+  }
+
+  function spawn(){
+    const r = pickRecipe();
+    const elapsed = RUN - timeLeft;
+    const max = Math.max(6.5, 13 - elapsed*.12) + (r.items.length === 4 ? 2 : 0);
+    cust = { r, hint: r.hints[Math.floor(Math.random()*r.hints.length)], max, p: max, wait: 0, clue: false, revealUntil: 0, leaving: false };
+    el.hint.textContent = `“${cust.hint}”`;
+    el.clue.textContent = '';
+    el.bubble.classList.remove('reveal');
+    const hue = Math.random();
+    el.car.textContent = CARS[Math.floor(Math.random()*CARS.length)];
+    el.car.style.filter = `hue-rotate(${Math.floor(hue*360)}deg)`;
+    if(s3) s3.spawn(hue);
+    el.customer.className = 'customer';
+    void el.customer.offsetWidth;
+    el.customer.classList.add('arrive');
+  }
+
+  function leave(happy){
+    cust = null;
+    if(s3) s3.leave(happy);
+    el.customer.className = 'customer ' + (happy ? 'leave-ok' : 'leave-mad');
+    nextSpawnAt = clock + (happy ? .45 : .6);
+  }
+
+  function emojis(items){ return items.map(k => BY[k].e).join(' '); }
+
+  // ---------- Actions ----------
+  function toggle(k){
+    if(mode !== 'play') return;
+    const i = sel.indexOf(k);
+    if(i >= 0){ sel.splice(i,1); sfx.unpick(); }
+    else if(sel.length < 4){ sel.push(k); sfx.pick(); }
+    else { tone(200,.08); return; }
+    renderSel();
+  }
+
+  function trash(){
+    if(mode !== 'play' || !sel.length) return;
+    if(s3) s3.trashDrop();
+    sel = []; sfx.trash(); renderSel();
+  }
+
+  function serve(){
+    if(mode !== 'play' || !cust || !sel.length) return;
+    const want = [...cust.r.items].sort().join();
+    const got = [...sel].sort().join();
+    if(want === got){
+      streak++;
+      const mult = streak >= 3 ? 2 : 1;
+      const pts = (100 + Math.round(100 * Math.max(0, cust.p) / cust.max)) * mult;
+      score += pts; served++;
+      flash('good'); popup('+' + pts + (mult > 1 ? ' 🔥' : ''));
+      sfx.good();
+      if(s3) s3.serveFly();
+      sel = []; renderSel();
+      leave(true);
+    } else {
+      streak = 0;
+      cust.p -= cust.max * .3;
+      cust.revealUntil = clock + 1.6;
+      el.hint.textContent = `Nope! It's ${emojis(cust.r.items)}`;
+      el.bubble.classList.add('reveal');
+      el.bubble.classList.remove('shake'); void el.bubble.offsetWidth; el.bubble.classList.add('shake');
+      flash('bad'); popup('✗', true);
+      sfx.bad();
+      if(s3){ s3.wrong(); s3.trashDrop(); }
+      sel = []; renderSel();
+    }
+    renderHud();
+  }
+
+  function flash(kind){
+    el.flash.className = 'flash'; void el.flash.offsetWidth; el.flash.className = 'flash ' + kind;
+  }
+  function popup(text, bad){
+    const p = document.createElement('div');
+    p.className = 'pop' + (bad ? ' bad' : '');
+    p.textContent = text;
+    p.addEventListener('animationend', () => p.remove());
+    el.scene.appendChild(p);
+  }
+
+  // ---------- Render ----------
+  function renderSel(){
+    slots.forEach((s,i) => {
+      const k = sel[i];
+      s.textContent = k ? BY[k].e : '';
+      s.classList.toggle('full', !!k);
+    });
+    ingBtns.forEach((b,i) => b.classList.toggle('on', sel.includes(ING[i].k)));
+    if(s3) s3.setSelection(sel);
+  }
+
+  function renderHud(){
+    el.score.textContent = score;
+    el.streak.textContent = streak >= 3 ? `🔥 x2` : (streak > 0 ? `streak ${streak}` : '');
+    el.strikes.forEach((s,i) => s.classList.toggle('lost', i < strikes));
+  }
+
+  function renderFrame(){
+    const t = Math.max(0, timeLeft);
+    el.clockFill.style.transform = `scaleX(${t / RUN})`;
+    const s = Math.ceil(t);
+    el.clockText.textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2,'0')}`;
+    el.clock.classList.toggle('urgent', t <= 10);
+    if(cust){
+      const f = Math.max(0, cust.p / cust.max);
+      el.patienceFill.style.transform = `scaleX(${f})`;
+      el.patienceFill.classList.toggle('low', f < .3);
+    }
+  }
+
+  // ---------- Loop ----------
+  function update(dt){
+    if(mode !== 'play') return;
+    clock += dt;
+    timeLeft -= dt;
+
+    const sec = Math.ceil(timeLeft);
+    if(sec !== lastSec){ lastSec = sec; if(sec <= 10 && sec > 0) sfx.tick(); }
+    if(timeLeft <= 0){ timeLeft = 0; renderFrame(); finish('time'); return; }
+
+    if(cust){
+      cust.wait += dt;
+      cust.p -= dt;
+      if(s3) s3.setAnger(1 - Math.max(0, cust.p) / cust.max);
+      if(!cust.clue && cust.wait > 5){
+        cust.clue = true;
+        const k = cust.r.items[Math.floor(Math.random()*cust.r.items.length)];
+        el.clue.textContent = `💡 one of them is ${BY[k].e}`;
+      }
+      if(cust.revealUntil && clock >= cust.revealUntil){
+        cust.revealUntil = 0;
+        el.hint.textContent = `“${cust.hint}”`;
+        el.bubble.classList.remove('reveal');
+      }
+      if(cust.p <= 0){
+        strikes++; streak = 0;
+        sfx.leave(); flash('bad'); popup('Drove off!', true);
+        leave(false);
+        renderHud();
+        if(strikes >= 3){ finish('strikes'); return; }
+      }
+    } else if(clock >= nextSpawnAt){
+      spawn();
+    }
+  }
+
+  let last = performance.now();
+  function frame(now){
+    const dt = Math.min(.05, (now - last) / 1000);
+    last = now;
+    update(dt);
+    renderFrame();
+    if(s3) s3.update(dt);
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // ---------- Input ----------
+  el.serve.addEventListener('click', e => { e.currentTarget.blur(); serve(); });
+  el.trash.addEventListener('click', e => { e.currentTarget.blur(); trash(); });
+  el.startBtn.addEventListener('click', e => { e.currentTarget.blur(); start(); });
+  el.againBtn.addEventListener('click', e => { e.currentTarget.blur(); start(); });
+  el.switchBtn.addEventListener('click', e => {
+    e.currentTarget.blur();
+    mode = 'title';
+    el.endScreen.hidden = true; el.titleScreen.hidden = false;
+    el.nameInput.value = player;
+    el.nameInput.focus(); el.nameInput.select();
+  });
+  el.nameInput.addEventListener('input', () => { el.nameErr.textContent = ''; });
+
+  addEventListener('keydown', e => {
+    if(e.target === el.nameInput){        // let the player type normally
+      if(e.key === 'Enter'){ e.preventDefault(); start(); }
+      return;
+    }
+    if([' ','Enter','Backspace','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) e.preventDefault();
+    if(e.repeat) return;
+    if(mode !== 'play'){
+      if(e.key === ' ' || e.key === 'Enter') start();
+      return;
+    }
+    if(e.key >= '1' && e.key <= '8') toggle(ING[+e.key - 1].k);
+    else if(e.key === ' ' || e.key === 'Enter') serve();
+    else if(e.key === 'Backspace' || e.key === 'Delete' || e.key === 'x') trash();
+  });
+
+  player = loadName();
+  el.nameInput.value = player;
+  reset();
+  renderFrame();
+})();
+</script>
+</body>
+</html>
