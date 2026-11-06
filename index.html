@@ -193,6 +193,8 @@ body.urgent::after{content:"";position:fixed;inset:0;pointer-events:none;z-index
 .name-field input:focus{outline:none;border-color:var(--yellow);box-shadow:0 0 0 4px rgba(255,210,63,.18)}
 .err{font-size:.8rem;color:#ff8d99;font-weight:700;min-height:1em}
 .cta{width:100%}
+.howto{color:var(--muted);font-weight:800;font-size:.9rem;text-decoration:none;margin-top:-4px}
+.howto:hover{color:var(--yellow)}
 .disclaimer{margin:0;font-size:.74rem;color:rgba(255,255,255,.45);max-width:34ch}
 .end-title{margin:0;font:900 italic 1.7rem/1.05 var(--display);color:var(--ink)}
 .big{font:900 clamp(3.6rem,18vw,4.8rem)/.95 var(--display);font-variant-numeric:tabular-nums;color:var(--yellow);letter-spacing:-.03em;
@@ -281,6 +283,7 @@ body.urgent::after{content:"";position:fixed;inset:0;pointer-events:none;z-index
       <div class="err" id="nameErr"></div>
     </div>
     <button class="serve cta ready" id="startBtn">Click to start</button>
+    <a class="howto" href="intro.html">New here? Read how to play ▸</a>
     <p class="disclaimer">Fan-made for an internal game jam. Not an official game.</p>
   </div>
 </div>
