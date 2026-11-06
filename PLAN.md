@@ -1,5 +1,11 @@
 # PLAN.md: <team name>
 
+**Play it:** https://mytran-15.github.io/secret-recipe-menu-rush/
+
+| Desktop | Phone |
+|---------|-------|
+| <img src="screenshot-desktop.png" alt="Secret Menu Rush on desktop: a green car at the drive-thru window, the customer's hint bubble, menu boards and the ingredient tray" width="560"> | <img src="screenshot-mobile.png" alt="Secret Menu Rush on a phone: customer hint with a clue, hot sauce picked on the order ticket" width="220"> |
+
 ## Pitch (one sentence)
 You are the late-shift drive-thru crew, trying to decode customers' vague secret-menu orders, before the 60-second rush ends.
 
