@@ -51,3 +51,4 @@ What the player does every 5 seconds: read the customer's hint → tap 3–4 ing
 | | Clock label shows "1:00" instead of "0:60"; start/end screens scroll on short windows | Found in playtest |
 | | Added stretch 1: name input + Top 5 board (local to the device) | So we know who got each score |
 | | Scene rebuilt in 3D with Three.js 0.149.0 (pinned CDN): kitchen-window view, 3D cars drive up, the order stacks on a tray and flies to the car; falls back to the 2D scene if Three.js/WebGL can't load | Asked for a 3D look; fallback keeps it playable offline |
+| | UI redesign: full-screen 3D with glass HUD (timer ring, walk-out lights), customer avatar bubble, order ticket, 3D-rendered ingredient icons, neon title, medal leaderboard; kitchen gets tiled wall + menu boards, rounded cars | First pass looked flat and cramped on desktop |
